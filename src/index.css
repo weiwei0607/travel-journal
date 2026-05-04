@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Playfair Display', ui-serif, Georgia, serif;
+
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-900: #0c4a6e;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  .font-serif {
+    font-family: var(--font-serif);
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* PDF preview page styles */
+.pdf-page {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 20mm;
+  margin: 0 auto;
+  background: white;
+  box-shadow: 0 0 20px rgba(0,0,0,0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.pdf-page-magazine {
+  background: #fafafa;
+}
+
+.pdf-page-minimal {
+  background: #ffffff;
+}
+
+.pdf-page-scrapbook {
+  background: #fef9f3;
+}
+
+@media print {
+  .pdf-page {
+    box-shadow: none;
+    margin: 0;
+    page-break-after: always;
+  }
+}
