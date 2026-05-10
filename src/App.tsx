@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, type Trip, type TripDay, type Photo } from './db';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import {
   Camera, Plus, Trash2, X, ChevronLeft, Download, Eye,
   Calendar, MapPin, Type, Layout, BookOpen,
@@ -135,8 +133,13 @@ function App() {
     if (!files || files.length === 0) return;
     setUploading(true);
 
+    const MAX_FILE_MB = 10;
     const uploaded: Photo[] = [];
     for (const file of Array.from(files).filter(f => f.type.startsWith('image/'))) {
+      if (file.size > MAX_FILE_MB * 1024 * 1024) {
+        alert(`${file.name} 超過 ${MAX_FILE_MB}MB 限制，已跳過`);
+        continue;
+      }
       const base64 = await fileToBase64(file);
       const thumbnail = await createThumbnail(base64);
       // Try to get date from file lastModified
@@ -222,11 +225,16 @@ function App() {
     setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, caption } : p));
   };
 
-  // PDF Export
+  // PDF Export — lazy-load heavy libraries to keep initial bundle small
   const exportPdf = async () => {
     if (!pdfRef.current || !activeTrip) return;
     setGeneratingPdf(true);
     try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
       const pages = pdfRef.current.querySelectorAll('.pdf-page');
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = 210;
@@ -239,8 +247,8 @@ function App() {
           useCORS: true,
           backgroundColor: '#ffffff',
           logging: false,
-          width: 794, // 210mm at 96dpi
-          height: 1123, // 297mm at 96dpi
+          width: 794,
+          height: 1123,
         });
         const imgData = canvas.toDataURL('image/png');
         pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
