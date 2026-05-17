@@ -35,6 +35,7 @@ function createThumbnail(base64: string, maxSize = 300): Promise<string> {
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL('image/jpeg', 0.8));
     };
+    img.onerror = () => resolve(base64); // fall back to original if thumbnail creation fails
     img.src = base64;
   });
 }
@@ -249,7 +250,7 @@ function App() {
       pdf.save(`${activeTrip.title.replace(/\s+/g, '_')}_旅遊紀錄.pdf`);
     } catch (e) {
       console.error('PDF export failed:', e);
-      alert('PDF 匯出失敗，請再試一次');
+      alert('PDF 匙出失敗，請再試一次');
     } finally {
       setGeneratingPdf(false);
     }
@@ -519,7 +520,7 @@ function App() {
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 disabled:opacity-50 transition-colors"
             >
               {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-              {generatingPdf ? '匯出中...' : '匯出 PDF'}
+              {generatingPdf ? '匙出中...' : '匙出 PDF'}
             </button>
           )}
         </div>
@@ -791,7 +792,7 @@ function App() {
               className="w-full py-3.5 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 transition-colors flex items-center justify-center gap-2"
             >
               <Eye className="w-4 h-4" />
-              預覽並匯出 PDF
+              預覽並匙出 PDF
             </button>
           </div>
         )}
@@ -810,7 +811,7 @@ function App() {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 disabled:opacity-50 transition-colors"
               >
                 {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                {generatingPdf ? '匯出中...' : '匯出 PDF'}
+                {generatingPdf ? '匙出中...' : '匙出 PDF'}
               </button>
             </div>
 
