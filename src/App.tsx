@@ -38,11 +38,11 @@ function createThumbnail(base64: string, maxSize = 300): Promise<string> {
 }
 
 function formatDate(ts: number): string {
-  return new Date(ts).toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'short' });
+  return new Date(ts).toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Taipei' });
 }
 
 function formatShortDate(ts: number): string {
-  return new Date(ts).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' });
+  return new Date(ts).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', timeZone: 'Asia/Taipei' });
 }
 
 function groupPhotosByDay(photos: Photo[]): TripDay[] {
