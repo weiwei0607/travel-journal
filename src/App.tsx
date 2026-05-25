@@ -11,7 +11,7 @@ import {
 
 // --- UTILS ---
 function generateId() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  return crypto.randomUUID();
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -31,7 +31,8 @@ function createThumbnail(base64: string, maxSize = 300): Promise<string> {
       const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
-      const ctx = canvas.getContext('2d')!;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(base64); return; }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL('image/jpeg', 0.8));
     };
@@ -126,9 +127,8 @@ function App() {
   }
 
   async function loadPhotosForTrip(trip: Trip) {
-    const allPhotos = await db.photos.toArray();
-    const tripPhotos = allPhotos.filter(p => trip.photoIds.includes(p.id));
-    setPhotos(tripPhotos);
+    const tripPhotos = await db.photos.bulkGet(trip.photoIds);
+    setPhotos(tripPhotos.filter(Boolean) as Photo[]);
   }
 
   // Create new trip
@@ -205,6 +205,7 @@ function App() {
     await loadTrips();
     if (activeTrip?.id === id) {
       setActiveTrip(null);
+      setPhotos([]);
       setView('list');
     }
   };
