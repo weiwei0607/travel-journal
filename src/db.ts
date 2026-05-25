@@ -39,8 +39,8 @@ class TravelDB extends Dexie {
   constructor() {
     super('TravelJournal');
     this.version(1).stores({
-      photos: '++id, createdAt',
-      trips: '++id, createdAt, updatedAt',
+      photos: 'id, createdAt',
+      trips: 'id, createdAt, updatedAt',
     });
   }
 }
