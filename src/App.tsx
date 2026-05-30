@@ -4,8 +4,9 @@ import {
   Camera, Plus, Trash2, X, ChevronLeft, Download, Eye,
   Calendar, MapPin, Type, Layout, BookOpen,
   Loader2, ArrowUpDown,
-  PenLine, Palette
+  PenLine, Palette, Settings, Sparkles
 } from 'lucide-react';
+import { getApiKey, saveApiKey, generatePhotoCaption } from './gemini';
 
 // --- UTILS ---
 function generateId() {
@@ -111,7 +112,33 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [editingDay, setEditingDay] = useState<number | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [generatingCaption, setGeneratingCaption] = useState<Set<string>>(new Set());
   const pdfRef = useRef<HTMLDivElement | null>(null);
+
+  function openSettings() {
+    setApiKeyInput(getApiKey());
+    setShowSettings(true);
+  }
+  function saveSettings() {
+    saveApiKey(apiKeyInput);
+    setShowSettings(false);
+  }
+
+  async function aiCaption(photo: Photo) {
+    if (generatingCaption.has(photo.id)) return;
+    if (!getApiKey()) { openSettings(); return; }
+    setGeneratingCaption(prev => new Set(prev).add(photo.id));
+    try {
+      const caption = await generatePhotoCaption(photo.src);
+      await updatePhotoCaption(photo.id, caption);
+    } catch (e) {
+      console.error('Caption generation failed:', e);
+    } finally {
+      setGeneratingCaption(prev => { const s = new Set(prev); s.delete(photo.id); return s; });
+    }
+  }
 
   // Load trips
   useEffect(() => {
@@ -513,6 +540,27 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setShowSettings(false); }}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="text-sm font-bold text-white">⚙️ Gemini API Key</h3>
+            <p className="text-xs text-slate-400">AI 照片說明功能需要 Gemini API Key（只存在本機）</p>
+            <input
+              type="password"
+              value={apiKeyInput}
+              onChange={e => setApiKeyInput(e.target.value)}
+              placeholder="AIzaSy..."
+              className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm font-mono focus:outline-none focus:border-sky-500"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setShowSettings(false)} className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 text-sm font-semibold hover:bg-slate-700">取消</button>
+              <button onClick={saveSettings} className="flex-1 py-2 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600">儲存</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-lg border-b border-slate-800">
         <div className="max-w-3xl mx-auto px-5 py-4 flex items-center justify-between">
@@ -535,16 +583,21 @@ function App() {
               </p>
             </div>
           </div>
-          {view === 'preview' && activeTrip && (
-            <button
-              onClick={exportPdf}
-              disabled={generatingPdf}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 disabled:opacity-50 transition-colors"
-            >
-              {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-              {generatingPdf ? '匯出中...' : '匯出 PDF'}
+          <div className="flex items-center gap-2">
+            {view === 'preview' && activeTrip && (
+              <button
+                onClick={exportPdf}
+                disabled={generatingPdf}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 disabled:opacity-50 transition-colors"
+              >
+                {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                {generatingPdf ? '匯出中...' : '匯出 PDF'}
+              </button>
+            )}
+            <button onClick={openSettings} className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-800 hover:text-slate-300 transition-colors" title="設定 API Key">
+              <Settings className="w-4 h-4" />
             </button>
-          )}
+          </div>
         </div>
       </header>
 
@@ -798,6 +851,14 @@ function App() {
                                 placeholder="為這張照片加上註解..."
                                 className="flex-1 h-8 px-3 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs focus:outline-none focus:border-sky-500"
                               />
+                              <button
+                                onClick={() => aiCaption(photo)}
+                                disabled={generatingCaption.has(photo.id)}
+                                className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-sky-400 hover:border-sky-500 disabled:opacity-40 transition-colors"
+                                title="AI 生成說明"
+                              >
+                                {generatingCaption.has(photo.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                              </button>
                             </div>
                           ))}
                         </div>
