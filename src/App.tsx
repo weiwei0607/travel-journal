@@ -22,7 +22,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 function createThumbnail(base64: string, maxSize = 300): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = document.createElement('img');
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -33,6 +33,7 @@ function createThumbnail(base64: string, maxSize = 300): Promise<string> {
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL('image/jpeg', 0.8));
     };
+    img.onerror = () => reject(new Error('圖片載入失敗'));
     img.src = base64;
   });
 }
@@ -123,8 +124,7 @@ function App() {
   }
 
   async function loadPhotosForTrip(trip: Trip) {
-    const allPhotos = await db.photos.toArray();
-    const tripPhotos = allPhotos.filter(p => trip.photoIds.includes(p.id));
+    const tripPhotos = await db.photos.where('id').anyOf(trip.photoIds).toArray();
     setPhotos(tripPhotos);
   }
 
@@ -133,51 +133,58 @@ function App() {
     if (!files || files.length === 0) return;
     setUploading(true);
 
-    const MAX_FILE_MB = 10;
-    const uploaded: Photo[] = [];
-    for (const file of Array.from(files).filter(f => f.type.startsWith('image/'))) {
-      if (file.size > MAX_FILE_MB * 1024 * 1024) {
-        alert(`${file.name} 超過 ${MAX_FILE_MB}MB 限制，已跳過`);
-        continue;
+    try {
+      const MAX_FILE_MB = 10;
+      const uploaded: Photo[] = [];
+      for (const file of Array.from(files).filter(f => f.type.startsWith('image/'))) {
+        if (file.size > MAX_FILE_MB * 1024 * 1024) {
+          alert(`${file.name} 超過 ${MAX_FILE_MB}MB 限制，已跳過`);
+          continue;
+        }
+        const base64 = await fileToBase64(file);
+        const thumbnail = await createThumbnail(base64);
+        const photo: Photo = {
+          id: generateId(),
+          fileName: file.name,
+          src: base64,
+          thumbnail,
+          createdAt: file.lastModified || Date.now(),
+        };
+        await db.photos.add(photo);
+        uploaded.push(photo);
       }
-      const base64 = await fileToBase64(file);
-      const thumbnail = await createThumbnail(base64);
-      // Try to get date from file lastModified
-      const photo: Photo = {
+
+      if (uploaded.length === 0) return;
+
+      const days = groupPhotosByDay(uploaded);
+      const startDate = Math.min(...uploaded.map(p => p.createdAt));
+      const endDate = Math.max(...uploaded.map(p => p.createdAt));
+
+      const trip: Trip = {
         id: generateId(),
-        fileName: file.name,
-        src: base64,
-        thumbnail,
-        createdAt: file.lastModified || Date.now(),
+        title: `我的旅程 ${formatShortDate(startDate)}`,
+        subtitle: `${uploaded.length} 張照片 · ${days.length} 天`,
+        coverPhotoId: uploaded[0]?.id,
+        startDate,
+        endDate,
+        days,
+        photoIds: uploaded.map(p => p.id),
+        template: 'magazine',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
-      await db.photos.add(photo);
-      uploaded.push(photo);
+
+      await db.trips.add(trip);
+      setPhotos(uploaded);
+      setActiveTrip(trip);
+      setView('editor');
+      await loadTrips();
+    } catch (err) {
+      console.error(err);
+      alert('上傳失敗，請重試。');
+    } finally {
+      setUploading(false);
     }
-
-    const days = groupPhotosByDay(uploaded);
-    const startDate = Math.min(...uploaded.map(p => p.createdAt));
-    const endDate = Math.max(...uploaded.map(p => p.createdAt));
-
-    const trip: Trip = {
-      id: generateId(),
-      title: `我的旅程 ${formatShortDate(startDate)}`,
-      subtitle: `${uploaded.length} 張照片 · ${days.length} 天`,
-      coverPhotoId: uploaded[0]?.id,
-      startDate,
-      endDate,
-      days,
-      photoIds: uploaded.map(p => p.id),
-      template: 'magazine',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    await db.trips.add(trip);
-    setPhotos(uploaded);
-    setActiveTrip(trip);
-    setView('editor');
-    setUploading(false);
-    await loadTrips();
   };
 
   // Update trip
