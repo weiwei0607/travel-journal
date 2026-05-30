@@ -119,13 +119,21 @@ function App() {
   }, []);
 
   async function loadTrips() {
-    const all = await db.trips.toArray();
-    setTrips(all.sort((a, b) => b.updatedAt - a.updatedAt));
+    try {
+      const all = await db.trips.toArray();
+      setTrips(all.sort((a, b) => b.updatedAt - a.updatedAt));
+    } catch (err) {
+      console.error('Failed to load trips:', err);
+    }
   }
 
   async function loadPhotosForTrip(trip: Trip) {
-    const tripPhotos = await db.photos.where('id').anyOf(trip.photoIds).toArray();
-    setPhotos(tripPhotos);
+    try {
+      const tripPhotos = await db.photos.where('id').anyOf(trip.photoIds).toArray();
+      setPhotos(tripPhotos);
+    } catch (err) {
+      console.error('Failed to load photos:', err);
+    }
   }
 
   // Create new trip
