@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, type Trip, type TripDay, type Photo } from './db';
 import {
   Camera, Plus, Trash2, X, ChevronLeft, Download, Eye,
@@ -7,6 +7,13 @@ import {
   PenLine, Palette, Settings, Sparkles
 } from 'lucide-react';
 import { getApiKey, saveApiKey, generatePhotoCaption } from './gemini';
+import { LazyImage } from './components/LazyImage';
+import { TripCardSkeleton, PhotoGridSkeleton, UploadAreaSkeleton } from './components/Skeletons';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { ToastContainer } from './components/ToastContainer';
+import { useToast } from './hooks/useToast';
+import { compressImage } from './utils/imageCompression';
+import { retry } from './utils/retry';
 
 // --- UTILS ---
 function generateId() {
@@ -115,7 +122,10 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [generatingCaption, setGeneratingCaption] = useState<Set<string>>(new Set());
+  const [loadingTrips, setLoadingTrips] = useState(true);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
   const pdfRef = useRef<HTMLDivElement | null>(null);
+  const { toasts, showToast, removeToast } = useToast();
 
   function openSettings() {
     setApiKeyInput(getApiKey());
@@ -131,35 +141,51 @@ function App() {
     if (!getApiKey()) { openSettings(); return; }
     setGeneratingCaption(prev => new Set(prev).add(photo.id));
     try {
-      const caption = await generatePhotoCaption(photo.src);
+      const caption = await retry(() => generatePhotoCaption(photo.src), {
+        retries: 2,
+        delay: 800,
+        onRetry: (_err, attempt) => {
+          showToast(`AI 說明生成失敗，第 ${attempt} 次重試...`, 'info');
+        },
+      });
       await updatePhotoCaption(photo.id, caption);
+      showToast('AI 說明生成成功', 'success');
     } catch (e) {
       console.error('Caption generation failed:', e);
+      showToast(e instanceof Error ? e.message : 'AI 說明生成失敗，請檢查 API Key', 'error');
     } finally {
       setGeneratingCaption(prev => { const s = new Set(prev); s.delete(photo.id); return s; });
     }
   }
 
-  // Load trips
-  useEffect(() => {
-    loadTrips();
-  }, []);
-
-  async function loadTrips() {
+  const loadTrips = useCallback(async () => {
+    setLoadingTrips(true);
     try {
-      const all = await db.trips.toArray();
+      const all = await retry(() => db.trips.toArray(), { retries: 2, delay: 300 });
       setTrips(all.sort((a, b) => b.updatedAt - a.updatedAt));
     } catch (err) {
       console.error('Failed to load trips:', err);
+      showToast('載入旅程失敗，請重新整理頁面', 'error');
+    } finally {
+      setLoadingTrips(false);
     }
-  }
+  }, [showToast]);
+
+  // Load trips
+  useEffect(() => {
+    loadTrips();
+  }, [loadTrips]);
 
   async function loadPhotosForTrip(trip: Trip) {
+    setLoadingPhotos(true);
     try {
-      const tripPhotos = await db.photos.where('id').anyOf(trip.photoIds).toArray();
+      const tripPhotos = await retry(() => db.photos.where('id').anyOf(trip.photoIds).toArray(), { retries: 2, delay: 300 });
       setPhotos(tripPhotos);
     } catch (err) {
       console.error('Failed to load photos:', err);
+      showToast('載入照片失敗，請重新整理頁面', 'error');
+    } finally {
+      setLoadingPhotos(false);
     }
   }
 
@@ -176,7 +202,9 @@ function App() {
           alert(`${file.name} 超過 ${MAX_FILE_MB}MB 限制，已跳過`);
           continue;
         }
-        const base64 = await fileToBase64(file);
+        let base64 = await fileToBase64(file);
+        // Compress full-size image before storage to reduce IndexedDB bloat
+        base64 = await compressImage(base64, { maxWidth: 1920, maxHeight: 1920, quality: 0.85 });
         const thumbnail = await createThumbnail(base64);
         const photo: Photo = {
           id: generateId(),
@@ -185,7 +213,7 @@ function App() {
           thumbnail,
           createdAt: file.lastModified || Date.now(),
         };
-        await db.photos.add(photo);
+        await retry(() => db.photos.add(photo), { retries: 2, delay: 300 });
         uploaded.push(photo);
       }
 
@@ -209,14 +237,14 @@ function App() {
         updatedAt: Date.now(),
       };
 
-      await db.trips.add(trip);
+      await retry(() => db.trips.add(trip), { retries: 2, delay: 300 });
       setPhotos(uploaded);
       setActiveTrip(trip);
       setView('editor');
       await loadTrips();
     } catch (err) {
       console.error(err);
-      alert('上傳失敗，請重試。');
+      showToast('上傳失敗，請重試', 'error');
     } finally {
       setUploading(false);
     }
@@ -243,8 +271,13 @@ function App() {
     if (!confirm('確定刪除這個旅程？')) return;
     const trip = await db.trips.get(id);
     if (trip) {
-      await db.photos.bulkDelete(trip.photoIds);
-      await db.trips.delete(id);
+      try {
+        await retry(() => db.photos.bulkDelete(trip.photoIds), { retries: 2, delay: 200 });
+        await retry(() => db.trips.delete(id), { retries: 2, delay: 200 });
+      } catch {
+        showToast('刪除旅程失敗，請重試', 'error');
+        return;
+      }
     }
     await loadTrips();
     if (activeTrip?.id === id) {
@@ -299,7 +332,7 @@ function App() {
       pdf.save(`${activeTrip.title.replace(/\s+/g, '_')}_旅遊紀錄.pdf`);
     } catch (e) {
       console.error('PDF export failed:', e);
-      alert('PDF 匯出失敗，請再試一次');
+      showToast('PDF 匯出失敗，請再試一次', 'error');
     } finally {
       setGeneratingPdf(false);
     }
@@ -561,6 +594,8 @@ function App() {
         </div>
       )}
 
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      <OfflineIndicator />
       {/* Header */}
       <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-lg border-b border-slate-800">
         <div className="max-w-3xl mx-auto px-5 py-4 flex items-center justify-between">
@@ -606,42 +641,55 @@ function App() {
         {view === 'list' && (
           <div className="space-y-6">
             {/* Upload area */}
-            <label
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); createTrip(e.dataTransfer.files); }}
-              className={`flex flex-col items-center justify-center w-full h-48 rounded-2xl border-2 border-dashed transition-all cursor-pointer ${
-                dragOver ? 'border-sky-400 bg-sky-950/30' : 'border-slate-700 bg-slate-900 hover:border-slate-600'
-              }`}
-            >
-              {uploading ? (
-                <div className="flex flex-col items-center">
-                  <Loader2 className="w-8 h-8 text-sky-400 animate-spin mb-2" />
-                  <span className="text-sm text-sky-300 font-medium">正在上傳照片...</span>
-                </div>
-              ) : (
-                <>
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 ${dragOver ? 'bg-sky-900/50' : 'bg-slate-800'}`}>
-                    <Plus className={`w-7 h-7 ${dragOver ? 'text-sky-400' : 'text-slate-400'}`} />
+            {loadingTrips ? (
+              <UploadAreaSkeleton />
+            ) : (
+              <label
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); createTrip(e.dataTransfer.files); }}
+                className={`flex flex-col items-center justify-center w-full h-48 rounded-2xl border-2 border-dashed transition-all cursor-pointer ${
+                  dragOver ? 'border-sky-400 bg-sky-950/30' : 'border-slate-700 bg-slate-900 hover:border-slate-600'
+                }`}
+              >
+                {uploading ? (
+                  <div className="flex flex-col items-center">
+                    <Loader2 className="w-8 h-8 text-sky-400 animate-spin mb-2" />
+                    <span className="text-sm text-sky-300 font-medium">正在處理照片...</span>
                   </div>
-                  <span className="text-sm text-slate-300 font-medium">新增旅遊紀錄</span>
-                  <span className="text-[11px] text-slate-500 mt-1">拖曳或點擊上傳照片，自動按天分組</span>
-                </>
-              )}
-              <input type="file" accept="image/*" multiple className="hidden" onChange={e => createTrip(e.target.files)} />
-            </label>
+                ) : (
+                  <>
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 ${dragOver ? 'bg-sky-900/50' : 'bg-slate-800'}`}>
+                      <Plus className={`w-7 h-7 ${dragOver ? 'text-sky-400' : 'text-slate-400'}`} />
+                    </div>
+                    <span className="text-sm text-slate-300 font-medium">新增旅遊紀錄</span>
+                    <span className="text-[11px] text-slate-500 mt-1">拖曳或點擊上傳照片，自動按天分組</span>
+                  </>
+                )}
+                <input type="file" accept="image/*" multiple className="hidden" onChange={e => createTrip(e.target.files)} />
+              </label>
+            )}
 
             {/* Trips */}
-            {trips.length > 0 ? (
+            {loadingTrips ? (
+              <div className="space-y-4">
+                <h2 className="text-sm font-semibold text-slate-300">我的旅程</h2>
+                <TripCardSkeleton />
+                <TripCardSkeleton />
+              </div>
+            ) : trips.length > 0 ? (
               <div className="space-y-4">
                 <h2 className="text-sm font-semibold text-slate-300">我的旅程</h2>
                 {trips.map(trip => {
                   const cover = trip.photoIds[0];
+                  const coverPhoto = cover ? photos.find(p => p.id === cover) : undefined;
                   return (
                     <div key={trip.id} className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden group">
                       <div className="relative h-44">
-                        {cover && (
-                          <img src={photos.find(p => p.id === cover)?.src || ''} alt="" className="w-full h-full object-cover" />
+                        {coverPhoto ? (
+                          <LazyImage src={coverPhoto.src} alt="" className="w-full h-full object-cover" placeholderClassName="absolute inset-0" />
+                        ) : (
+                          <div className="w-full h-full bg-slate-800" />
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
                         <div className="absolute bottom-4 left-4 right-4">
@@ -689,9 +737,13 @@ function App() {
               </div>
             ) : (
               <div className="text-center py-16 text-slate-500">
-                <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">還沒有旅程</p>
-                <p className="text-xs mt-1">上傳旅遊照片開始製作紀錄</p>
+                <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto mb-4">
+                  <BookOpen className="w-8 h-8 text-slate-600" />
+                </div>
+                <p className="text-sm font-medium text-slate-400">還沒有旅程</p>
+                <p className="text-xs mt-1.5 text-slate-500 max-w-xs mx-auto leading-relaxed">
+                  上傳旅遊照片，我們會自動按時間分組，幫你整理成精美的旅遊紀錄
+                </p>
               </div>
             )}
           </div>
@@ -815,11 +867,14 @@ function App() {
 
                     {/* Photo grid */}
                     <div className="px-5 pb-5 space-y-3">
-                      <div className="grid grid-cols-4 gap-2">
-                        {dayPhotos.map((photo, pi) => (
-                          <div key={photo.id} className="relative aspect-square group">
-                            <img src={photo.thumbnail} alt="" className="w-full h-full object-cover rounded-xl" />
-                            {isEditing && (
+                      {loadingPhotos ? (
+                        <PhotoGridSkeleton count={Math.max(dayPhotos.length, 4)} />
+                      ) : (
+                        <div className="grid grid-cols-4 gap-2">
+                          {dayPhotos.map((photo, pi) => (
+                            <div key={photo.id} className="relative aspect-square group">
+                              <LazyImage src={photo.thumbnail} alt="" className="w-full h-full object-cover rounded-xl" placeholderClassName="rounded-xl" />
+                              {isEditing && (
                               <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <div className="flex gap-1">
                                   {pi > 0 && (
@@ -836,13 +891,14 @@ function App() {
                           </div>
                         ))}
                       </div>
+                      )}
                       {isEditing && dayPhotos.length > 0 && (
                         <div className="space-y-2">
                           <p className="text-xs text-slate-500 font-medium">照片註解</p>
                           {dayPhotos.map(photo => (
                             <div key={photo.id} className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0">
-                                <img src={photo.thumbnail} alt="" className="w-full h-full object-cover" />
+                                <LazyImage src={photo.thumbnail} alt="" className="w-full h-full object-cover" placeholderClassName="rounded-lg" />
                               </div>
                               <input
                                 type="text"
