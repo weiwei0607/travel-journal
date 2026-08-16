@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, type Trip, type TripDay, type Photo } from './db';
+import { loadDemoData } from './demoSeed';
 import {
   Camera, Plus, Trash2, X, ChevronLeft, Download, Eye,
   Calendar, MapPin, Type, Layout, BookOpen,
@@ -158,18 +159,35 @@ function App() {
     }
   }
 
+  // 列表卡片的封面來自 photos state，但 photos 原本只在打開某趟旅程時才載入，
+  // 所以重新整理後所有封面都會是空白。這裡改成一併把每趟旅程的封面照抓進來。
+  const loadCovers = useCallback(async (all: Trip[]) => {
+    const coverIds = all.map(t => t.photoIds[0]).filter(Boolean) as string[];
+    if (coverIds.length === 0) return;
+    try {
+      const covers = await db.photos.where('id').anyOf(coverIds).toArray();
+      setPhotos(prev => {
+        const seen = new Set(prev.map(p => p.id));
+        return [...prev, ...covers.filter(c => !seen.has(c.id))];
+      });
+    } catch (err) {
+      console.error('Failed to load cover photos:', err);
+    }
+  }, []);
+
   const loadTrips = useCallback(async () => {
     setLoadingTrips(true);
     try {
       const all = await retry(() => db.trips.toArray(), { retries: 2, delay: 300 });
       setTrips(all.sort((a, b) => b.updatedAt - a.updatedAt));
+      await loadCovers(all);
     } catch (err) {
       console.error('Failed to load trips:', err);
       showToast('載入旅程失敗，請重新整理頁面', 'error');
     } finally {
       setLoadingTrips(false);
     }
-  }, [showToast]);
+  }, [showToast, loadCovers]);
 
   // Load trips
   useEffect(() => {
@@ -743,6 +761,15 @@ function App() {
                 <p className="text-sm font-medium text-slate-400">還沒有旅程</p>
                 <p className="text-xs mt-1.5 text-slate-500 max-w-xs mx-auto leading-relaxed">
                   上傳旅遊照片，我們會自動按時間分組，幫你整理成精美的旅遊紀錄
+                </p>
+                <button
+                  onClick={async () => { await loadDemoData(); window.location.reload(); }}
+                  className="mt-6 text-sm font-semibold text-slate-200 bg-slate-800 border border-slate-700 px-6 py-3 rounded-full transition-all active:scale-95"
+                >
+                  先看示範旅程
+                </button>
+                <p className="text-[11px] mt-3 text-slate-500 leading-relaxed">
+                  一趟三天的示範旅程，可以直接匯出 PDF<br />資料只存在你的瀏覽器
                 </p>
               </div>
             )}

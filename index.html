@@ -13,13 +13,77 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
-  </head>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=Caveat:wght@600&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style id="wms-style">
+.wms-overlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:stretch;justify-content:center;transition:opacity .55s ease;cursor:pointer;font-family:'Noto Sans TC',-apple-system,sans-serif;}
+.wms-cover{position:relative;width:100%;max-width:430px;height:100dvh;overflow:hidden;box-shadow:0 0 60px rgba(0,0,0,.28);}
+.wms-hint{position:absolute;left:0;right:0;bottom:16px;text-align:center;font-size:.68rem;letter-spacing:.24em;opacity:.55;z-index:5;pointer-events:none;}
+.wms-skip{position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);right:16px;z-index:6;background:rgba(255,255,255,.16);color:#fff;border:none;border-radius:999px;padding:6px 15px;font-size:.78rem;font-weight:600;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);}
+@media(prefers-reduced-motion:reduce){.wms-overlay *{animation:none !important;}}
+
+.wms-hint{color:#8fa0c4;}
+
+.tj-polaroid{position:absolute;width:148px;padding:9px 9px 30px;background:#f7f3ea;border-radius:4px;box-shadow:0 12px 28px rgba(0,0,0,.45);animation:tjFloat 6s ease-in-out infinite alternate;}
+.tj-polaroid .ph{height:122px;border-radius:2px;}
+.tj-polaroid .cap{position:absolute;bottom:6px;left:0;right:0;text-align:center;font-family:'Caveat',cursive;font-size:1.05rem;color:#4a4438;}
+.tj-polaroid.p1{left:22px;top:84px;transform:rotate(-7deg);}
+.tj-polaroid.p1 .ph{background:linear-gradient(160deg,#f2a65a 0%,#d95d67 55%,#6d4b7c 100%);}
+.tj-polaroid.p2{right:20px;top:168px;transform:rotate(5deg);animation-delay:1.4s;}
+.tj-polaroid.p2 .ph{background:linear-gradient(180deg,#9fd8e8 0%,#3e7fa6 70%,#2b5878 100%);}
+.tj-polaroid.p3{left:58px;top:300px;transform:rotate(2.5deg);animation-delay:2.6s;width:132px;}
+.tj-polaroid.p3 .ph{height:106px;background:linear-gradient(160deg,#2b3a5e 0%,#506a9e 50%,#e8b96e 100%);}
+@keyframes tjFloat{from{translate:0 0}to{translate:0 -9px}}
+.tj-route{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.tj-path{fill:none;stroke:#e4574c;stroke-width:2;stroke-dasharray:3 8;stroke-linecap:round;animation:tjDash 14s linear infinite;}
+@keyframes tjDash{to{stroke-dashoffset:-220}}
+.tj-stamp{fill:none;stroke:#7fb7c9;stroke-width:1.6;stroke-dasharray:2.5 3.5;}
+.tj-code{fill:#7fb7c9;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;text-anchor:middle;}
+.tj-plane{fill:#f0e9da;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5));}
+.tj-card{position:absolute;left:28px;right:28px;bottom:118px;background:#f7f3ea;border-radius:10px;padding:20px 22px 18px;border:6px solid transparent;background-clip:padding-box;box-shadow:0 16px 40px rgba(0,0,0,.5);}
+.tj-card::before{content:'';position:absolute;inset:-6px;z-index:-1;border-radius:10px;background:repeating-linear-gradient(45deg,#d64541 0 12px,#f7f3ea 12px 24px,#3d6ea5 24px 36px,#f7f3ea 36px 48px);}
+.tj-card .en{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.34em;color:#a08d64;}
+.tj-card h2{font-weight:900;font-size:2rem;color:#2c2820;letter-spacing:.1em;margin:6px 0 4px;}
+.tj-card p{font-size:.8rem;color:#75705f;}
+.tj-cta{position:absolute;left:50%;bottom:54px;transform:translateX(-50%);background:#e4574c;color:#fff7ee;font-weight:900;letter-spacing:.2em;font-size:.9rem;padding:13px 42px;border-radius:999px;box-shadow:0 8px 24px rgba(228,87,76,.4);}
+</style>
+</head>
   <body>
+<div id="wms" class="wms-overlay" style="background:linear-gradient(165deg, #17203a 0%, #111827 55%, #0d1220 100%)"><div class="wms-cover" style="background:linear-gradient(165deg, #17203a 0%, #111827 55%, #0d1220 100%)"><svg class="tj-route" viewBox="0 0 390 760"><path class="tj-path" d="M 40 70 C 140 30 240 90 300 66 C 350 46 368 110 340 150 C 300 208 120 190 90 260 C 66 316 220 300 268 356"/>
+<circle class="tj-stamp" cx="40" cy="70" r="17"/><text class="tj-code" x="40" y="74">TPE</text>
+<circle class="tj-stamp" cx="322" cy="60" r="17"/><text class="tj-code" x="322" y="64">NRT</text>
+<circle class="tj-stamp" cx="268" cy="356" r="17"/><text class="tj-code" x="268" y="360">CDG</text>
+<g class="tj-plane" transform="translate(180 176) rotate(18)"><path d="M0 0 L22 -6 L4 4 L8 14 Z"/></g></svg>
+<div class="tj-polaroid p1"><div class="ph"></div><div class="cap">富士山下 · 夏</div></div>
+<div class="tj-polaroid p2"><div class="ph"></div><div class="cap">沖繩的海</div></div>
+<div class="tj-polaroid p3"><div class="ph"></div><div class="cap">巴黎 22:40</div></div>
+<div class="tj-card"><div class="en">TRAVEL JOURNAL</div><h2>旅行手帳</h2><p>每一段旅程，都值得好好收進口袋</p></div>
+<div class="tj-cta">打開手帳</div><div class="wms-hint">點擊任意處進入</div></div><button class="wms-skip" type="button">跳過 &rsaquo;</button></div>
+<script>(function(){var o=document.getElementById("wms");if(!o)return;try{if(sessionStorage.getItem("wms_seen_travel-journal")){o.remove();return;}}catch(e){}function d(){o.style.opacity="0";o.style.pointerEvents="none";try{sessionStorage.setItem("wms_seen_travel-journal","1")}catch(e){}setTimeout(function(){o.remove()},560);}o.addEventListener("click",d);})();</script>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // 註冊 service worker。新版上線時 SW 會 skipWaiting 直接接管，
+      // 並在換版後重新整理一次，避免使用者停在舊版或看到白畫面。
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              if (refreshing) return;
+              refreshing = true;
+              window.location.reload();
+            });
+            reg.addEventListener('updatefound', () => {
+              const sw = reg.installing;
+              if (sw) sw.addEventListener('statechange', () => {
+                if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.info('[sw] 已下載新版，重新整理後生效');
+                }
+              });
+            });
+          }).catch((e) => console.warn('[sw] 註冊失敗', e));
+        });
       }
     </script>
   </body>
