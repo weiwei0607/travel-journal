@@ -24,7 +24,10 @@ function generateId() {
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('讀取檔案失敗'));
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -215,9 +218,13 @@ function App() {
     try {
       const MAX_FILE_MB = 10;
       const uploaded: Photo[] = [];
-      for (const file of Array.from(files).filter(f => f.type.startsWith('image/'))) {
+      const allFiles = Array.from(files);
+      const imageFiles = allFiles.filter(f => f.type.startsWith('image/'));
+      const skippedNonImage = allFiles.length - imageFiles.length;
+      const oversizedNames: string[] = [];
+      for (const file of imageFiles) {
         if (file.size > MAX_FILE_MB * 1024 * 1024) {
-          alert(`${file.name} 超過 ${MAX_FILE_MB}MB 限制，已跳過`);
+          oversizedNames.push(file.name);
           continue;
         }
         let base64 = await fileToBase64(file);
@@ -233,6 +240,18 @@ function App() {
         };
         await retry(() => db.photos.add(photo), { retries: 2, delay: 300 });
         uploaded.push(photo);
+      }
+
+      if (oversizedNames.length > 0) {
+        showToast(
+          oversizedNames.length === 1
+            ? `${oversizedNames[0]} 超過 ${MAX_FILE_MB}MB 限制，已跳過`
+            : `${oversizedNames.length} 張照片超過 ${MAX_FILE_MB}MB 限制，已跳過`,
+          'error'
+        );
+      }
+      if (skippedNonImage > 0) {
+        showToast(`已略過 ${skippedNonImage} 個非圖片檔案`, 'error');
       }
 
       if (uploaded.length === 0) return;
@@ -272,9 +291,15 @@ function App() {
   const updateTrip = async (changes: Partial<Trip>) => {
     if (!activeTrip) return;
     const updated = { ...activeTrip, ...changes, updatedAt: Date.now() };
-    await db.trips.update(activeTrip.id, updated);
+    // 先更新畫面上的樂觀狀態，真正寫入失敗時要回報，不然使用者以為存好了其實沒存。
     setActiveTrip(updated);
-    await loadTrips();
+    try {
+      await retry(() => db.trips.update(activeTrip.id, updated), { retries: 2, delay: 200 });
+      await loadTrips();
+    } catch (err) {
+      console.error('Failed to save trip:', err);
+      showToast('儲存失敗，變更可能沒有存下來，請重新整理確認', 'error');
+    }
   };
 
   const updateDay = (dayIndex: number, changes: Partial<TripDay>) => {
@@ -290,8 +315,15 @@ function App() {
     const trip = await db.trips.get(id);
     if (trip) {
       try {
-        await retry(() => db.photos.bulkDelete(trip.photoIds), { retries: 2, delay: 200 });
-        await retry(() => db.trips.delete(id), { retries: 2, delay: 200 });
+        // 用 transaction 包起來：刪照片跟刪旅程要嘛一起成功要嘛一起失敗，
+        // 避免「照片刪光了但旅程還在列表上」這種修不回去的殘缺狀態。
+        await retry(
+          () => db.transaction('rw', db.photos, db.trips, async () => {
+            await db.photos.bulkDelete(trip.photoIds);
+            await db.trips.delete(id);
+          }),
+          { retries: 2, delay: 200 }
+        );
       } catch {
         showToast('刪除旅程失敗，請重試', 'error');
         return;
@@ -314,8 +346,13 @@ function App() {
   };
 
   const updatePhotoCaption = async (photoId: string, caption: string) => {
-    await db.photos.update(photoId, { caption });
     setPhotos(prev => prev.map(p => p.id === photoId ? { ...p, caption } : p));
+    try {
+      await retry(() => db.photos.update(photoId, { caption }), { retries: 2, delay: 200 });
+    } catch (err) {
+      console.error('Failed to save caption:', err);
+      showToast('說明文字儲存失敗，請重新整理確認', 'error');
+    }
   };
 
   // PDF Export — lazy-load heavy libraries to keep initial bundle small
@@ -763,7 +800,15 @@ function App() {
                   上傳旅遊照片，我們會自動按時間分組，幫你整理成精美的旅遊紀錄
                 </p>
                 <button
-                  onClick={async () => { await loadDemoData(); window.location.reload(); }}
+                  onClick={async () => {
+                    try {
+                      await loadDemoData();
+                      window.location.reload();
+                    } catch (err) {
+                      console.error('Failed to load demo data:', err);
+                      showToast('示範資料載入失敗，此瀏覽器（例如無痕模式）可能不支援本機儲存', 'error');
+                    }
+                  }}
                   className="mt-6 text-sm font-semibold text-slate-200 bg-slate-800 border border-slate-700 px-6 py-3 rounded-full transition-all active:scale-95"
                 >
                   先看示範旅程

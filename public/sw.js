@@ -52,10 +52,13 @@ self.addEventListener('fetch', (event) => {
   // 導覽請求：網路優先，斷線才回快取的 index.html
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req)
+      fetch(req, { signal: AbortSignal.timeout(10000) })
         .then((res) => {
-          const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put('/index.html', copy));
+          // 只快取成功回應；4xx/5xx 的錯誤頁不該取代快取裡的正常 index.html
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(SHELL).then((c) => c.put('/index.html', copy)).catch(() => {});
+          }
           return res;
         })
         .catch(() =>
@@ -74,7 +77,7 @@ self.addEventListener('fetch', (event) => {
           fetch(req).then((res) => {
             if (res.ok) {
               const copy = res.clone();
-              caches.open(ASSETS).then((c) => c.put(req, copy));
+              caches.open(ASSETS).then((c) => c.put(req, copy)).catch(() => {});
             }
             return res;
           })

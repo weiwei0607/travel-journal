@@ -71,5 +71,11 @@ export async function loadDemoData() {
     for (const ph of photos) await db.photos.put(ph);
     for (const t of trips) await db.trips.put(t);
   });
-  localStorage.setItem(DEMO_FLAG, '1');
+  // localStorage 在無痕模式下部分瀏覽器會擋（SecurityError）。
+  // 這個旗標只是輔助用途，寫不進去不該讓整個「看示範」流程失敗。
+  try {
+    localStorage.setItem(DEMO_FLAG, '1');
+  } catch (err) {
+    console.warn('Failed to set demo flag in localStorage:', err);
+  }
 }
